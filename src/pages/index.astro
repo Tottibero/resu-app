@@ -6,7 +6,7 @@ function getGenreTag(genre) {
   if (g.includes('progressive death') || g.includes('melodic death')) return 'tag-death';
   if (g.includes('deathcore')) return 'tag-deathcore';
   if (g.includes('death metal') || (g.includes('death') && !g.includes('deathcore'))) return 'tag-death';
-  if (g.includes('black metal') || g.includes('black/') || g.includes('viking')) return 'tag-black';
+  if (g.includes('black metal') || g.includes('viking')) return 'tag-black';
   if (g.includes('doom') || g.includes('sludge')) return 'tag-doom';
   if (g.includes('mathcore') || g.includes('math rock') || g.includes('noise metal')) return 'tag-math';
   if (g.includes('metalcore')) return 'tag-metalcore';
@@ -20,210 +20,379 @@ function getGenreTag(genre) {
   if (g.includes('stoner') || g.includes('psych')) return 'tag-stoner';
   if (g.includes('por confirmar')) return 'tag-tbc';
   if (g.includes('heavy metal') || g.includes('symphonic')) return 'tag-heavy';
-  if (g.includes('rock') || g.includes('grunge') || g.includes('indie') || g.includes('blues') || g.includes('alternativo') || g.includes('alternati')) return 'tag-rock';
+  if (g.includes('rock') || g.includes('grunge') || g.includes('indie') || g.includes('blues') || g.includes('alternativo')) return 'tag-rock';
   return 'tag-other';
+}
+
+function toMin(str) {
+  const [h, m] = str.split(':').map(Number);
+  return ((h < 14 ? h + 24 : h) * 60 + m) - (14 * 60 + 30);
+}
+
+const PX = 3.5;
+const TOTAL = 780;
+const H = TOTAL * PX;
+
+const marks = Array.from({ length: TOTAL / 30 + 1 }, (_, i) => {
+  const mins = i * 30;
+  const abs = 14 * 60 + 30 + mins;
+  const hh = String(Math.floor(abs / 60) % 24).padStart(2, '0');
+  const mm = String(abs % 60).padStart(2, '0');
+  return { label: `${hh}:${mm}`, top: mins * PX, hour: abs % 60 === 0 };
+});
+
+const stageColors = { main: '#b8860b', ritual: '#c0392b', chaos: '#c84b00', desert: '#7a6548' };
+
+function processDay(daySched, badgeMap) {
+  let events = [];
+  for (const [stage, bands] of Object.entries(daySched)) {
+    for (const band of bands) {
+      const sMin = toMin(band.start);
+      const eMin = toMin(band.end);
+      events.push({ name: band.name, stage, start: band.start, end: band.end, sMin, eMin, color: stageColors[stage], badge: badgeMap[band.name] || null, col: 0, numCols: 1 });
+    }
+  }
+  events.sort((a, b) => a.sMin - b.sMin || a.eMin - b.eMin);
+
+  // Greedy column assignment
+  const colEnds = [-1, -1, -1];
+  events.forEach(ev => {
+    let c = colEnds.findIndex(e => e <= ev.sMin);
+    if (c === -1) c = 0;
+    ev.col = c;
+    colEnds[c] = ev.eMin;
+  });
+
+  // Connected components: transitively overlapping events share numCols
+  const ovlp = (a, b) => a.sMin < b.eMin && a.eMin > b.sMin;
+  const n = events.length;
+  const comp = new Array(n).fill(-1);
+  let cid = 0;
+  for (let i = 0; i < n; i++) {
+    if (comp[i] !== -1) continue;
+    const q = [i];
+    comp[i] = cid;
+    for (let qi = 0; qi < q.length; qi++) {
+      const cur = q[qi];
+      for (let j = 0; j < n; j++) {
+        if (comp[j] === -1 && ovlp(events[cur], events[j])) { comp[j] = cid; q.push(j); }
+      }
+    }
+    cid++;
+  }
+  const compMax = new Array(cid).fill(0);
+  events.forEach((ev, i) => { compMax[comp[i]] = Math.max(compMax[comp[i]], ev.col); });
+  events.forEach((ev, i) => { ev.numCols = compMax[comp[i]] + 1; });
+
+  return events;
 }
 
 const days = [
   {
-    id: 'miercoles',
-    label: 'MIÉRCOLES',
+    id: 'miercoles', label: 'MIÉRCOLES',
     stages: [
-      {
-        id: 'main', label: 'MAIN', color: '#d4a017',
-        bands: [
-          { name: 'Sabaton', genre: 'Power Metal' },
-          { name: 'A Day To Remember', genre: 'Post-Hardcore / Pop-Punk' },
-          { name: 'Thrown', genre: 'Nu-Metalcore', badge: 'Imprescindible' },
-          { name: 'President', genre: 'Metal / Hardcore' },
-          { name: 'Man With A Mission', genre: 'J-Rock / Alternative Rock' },
-          { name: 'Annisokay', genre: 'Post-Hardcore / Alternative Metal', badge: 'Recomendable' },
-        ]
-      },
-      {
-        id: 'ritual', label: 'RITUAL', color: '#cc0000',
-        bands: [
-          { name: 'Testament', genre: 'Thrash Metal' },
-          { name: 'Self Deception', genre: 'Modern Rock / Alternative Metal', badge: 'Recomendable' },
-          { name: 'The Browning', genre: 'Electronicore / Deathcore', badge: 'Imprescindible' },
-          { name: 'The Pretty Wild', genre: 'Hard Rock' },
-          { name: 'TSS', genre: 'Hardcore Punk', badge: 'Recomendable' },
-          { name: 'Aneuma', genre: 'Melodic Death Metal' },
-        ]
-      },
-      {
-        id: 'chaos', label: 'CHAOS', color: '#e05c00',
-        bands: [
-          { name: 'High Vis', genre: 'Post-Punk / Hardcore', badge: 'Recomendable' },
-          { name: 'Get The Shot', genre: 'Hardcore Punk' },
-          { name: 'The Scratch', genre: 'Irish Folk Punk' },
-          { name: 'Immortal Disfigurement', genre: 'Deathcore' },
-          { name: 'God Complex', genre: 'Hardcore / Metalcore', badge: 'Imprescindible' },
-        ]
-      },
-      {
-        id: 'desert', label: 'DESERT', color: '#8b7355',
-        bands: [
-          { name: 'Crowded', genre: 'Hardcore' },
-          { name: 'Faetooth', genre: 'Doom / Sludge Metal', badge: 'Recomendable' },
-          { name: 'Lampr3a', genre: 'Progressive Metal / Instrumental' },
-          { name: 'Cwfen', genre: 'Doom Metal / Occult Rock', badge: 'Recomendable' },
-          { name: 'Cardiac', genre: 'Hardcore / Metalcore' },
-          { name: 'Black Maracas', genre: 'Psych Rock / Garage' },
-        ]
-      },
+      { id: 'main', label: 'MAIN', bands: [
+        { name: 'Sabaton', genre: 'Power Metal' },
+        { name: 'A Day To Remember', genre: 'Post-Hardcore / Pop-Punk' },
+        { name: 'Thrown', genre: 'Nu-Metalcore', badge: 'Imprescindible' },
+        { name: 'President', genre: 'Metal / Hardcore' },
+        { name: 'Man With A Mission', genre: 'J-Rock / Alternative Rock' },
+        { name: 'Annisokay', genre: 'Post-Hardcore / Alternative Metal', badge: 'Recomendable' },
+      ]},
+      { id: 'ritual', label: 'RITUAL', bands: [
+        { name: 'Testament', genre: 'Thrash Metal' },
+        { name: 'Self Deception', genre: 'Modern Rock / Alternative Metal', badge: 'Recomendable' },
+        { name: 'The Browning', genre: 'Electronicore / Deathcore', badge: 'Imprescindible' },
+        { name: 'The Pretty Wild', genre: 'Hard Rock' },
+        { name: 'TSS', genre: 'Hardcore Punk', badge: 'Recomendable' },
+        { name: 'Aneuma', genre: 'Melodic Death Metal' },
+      ]},
+      { id: 'chaos', label: 'CHAOS', bands: [
+        { name: 'High Vis', genre: 'Post-Punk / Hardcore', badge: 'Recomendable' },
+        { name: 'Get The Shot', genre: 'Hardcore Punk' },
+        { name: 'The Scratch', genre: 'Irish Folk Punk' },
+        { name: 'Immortal Disfigurement', genre: 'Deathcore' },
+        { name: 'God Complex', genre: 'Hardcore / Metalcore', badge: 'Imprescindible' },
+      ]},
+      { id: 'desert', label: 'DESERT', bands: [
+        { name: 'Crowded', genre: 'Hardcore' },
+        { name: 'Faetooth', genre: 'Doom / Sludge Metal', badge: 'Recomendable' },
+        { name: 'Lampr3a', genre: 'Progressive Metal / Instrumental' },
+        { name: 'Cwfen', genre: 'Doom Metal / Occult Rock', badge: 'Recomendable' },
+        { name: 'Cardiac', genre: 'Hardcore / Metalcore' },
+        { name: 'Black Maracas', genre: 'Psych Rock / Garage' },
+      ]},
     ]
   },
   {
-    id: 'jueves',
-    label: 'JUEVES',
+    id: 'jueves', label: 'JUEVES',
     stages: [
-      {
-        id: 'main', label: 'MAIN', color: '#d4a017',
-        bands: [
-          { name: 'Iron Maiden', genre: 'Heavy Metal' },
-          { name: 'Anthrax', genre: 'Thrash Metal' },
-          { name: 'Angelus Apatrida', genre: 'Thrash Metal' },
-          { name: 'Feuerschwanz', genre: 'Folk Metal' },
-          { name: 'Caskets', genre: 'Post-Hardcore / Alt Rock', badge: 'Recomendable' },
-        ]
-      },
-      {
-        id: 'ritual', label: 'RITUAL', color: '#cc0000',
-        bands: [
-          { name: 'Caliban', genre: 'Metalcore', badge: 'Recomendable' },
-          { name: 'Witch Club Satan', genre: 'Black Metal', badge: 'Recomendable' },
-          { name: 'The Funeral Portrait', genre: 'Emo / Post-Hardcore' },
-          { name: 'Burning Witches', genre: 'Heavy Metal' },
-          { name: 'Fallen At Dawn', genre: 'Metalcore', badge: 'Recomendable' },
-          { name: 'Her Anxiety', genre: 'Melodic Metalcore' },
-        ]
-      },
-      {
-        id: 'chaos', label: 'CHAOS', color: '#e05c00',
-        bands: [
-          { name: 'Lionheart', genre: 'Beatdown Hardcore' },
-          { name: 'The Callous Daoboys', genre: 'Mathcore', badge: 'Imprescindible' },
-          { name: 'Authority Zero', genre: 'Melodic Punk Rock' },
-          { name: 'Belvedere', genre: 'Skate Punk' },
-          { name: 'Blood Command', genre: 'Deathpop / Punk Rock', badge: 'Imprescindible' },
-          { name: 'Fuet!', genre: 'Punk / Hardcore', badge: 'Imprescindible' },
-        ]
-      },
-      {
-        id: 'desert', label: 'DESERT', color: '#8b7355',
-        bands: [
-          { name: 'Blues Pills', genre: 'Blues Rock / Psychedelic Rock', badge: 'Recomendable' },
-          { name: 'Psychonaut', genre: 'Post-Metal / Sludge', badge: 'Imprescindible' },
-          { name: 'Ciclonautas', genre: 'Rock Urbano / Alternativo' },
-          { name: 'Vulvarine', genre: "Rock 'n' Roll / Heavy Rock" },
-          { name: 'Silly Goose', genre: 'Nu-Metal / Rap Rock', badge: 'Imprescindible' },
-          { name: 'Band Contest', genre: 'Por confirmar (Ganador concurso)' },
-        ]
-      },
+      { id: 'main', label: 'MAIN', bands: [
+        { name: 'Iron Maiden', genre: 'Heavy Metal' },
+        { name: 'Anthrax', genre: 'Thrash Metal' },
+        { name: 'Angelus Apatrida', genre: 'Thrash Metal' },
+        { name: 'Feuerschwanz', genre: 'Folk Metal' },
+        { name: 'Caskets', genre: 'Post-Hardcore / Alt Rock', badge: 'Recomendable' },
+      ]},
+      { id: 'ritual', label: 'RITUAL', bands: [
+        { name: 'Caliban', genre: 'Metalcore', badge: 'Recomendable' },
+        { name: 'Witch Club Satan', genre: 'Black Metal', badge: 'Recomendable' },
+        { name: 'The Funeral Portrait', genre: 'Emo / Post-Hardcore' },
+        { name: 'Burning Witches', genre: 'Heavy Metal' },
+        { name: 'Fallen At Dawn', genre: 'Metalcore', badge: 'Recomendable' },
+        { name: 'Her Anxiety', genre: 'Melodic Metalcore' },
+      ]},
+      { id: 'chaos', label: 'CHAOS', bands: [
+        { name: 'Lionheart', genre: 'Beatdown Hardcore' },
+        { name: 'The Callous Daoboys', genre: 'Mathcore', badge: 'Imprescindible' },
+        { name: 'Authority Zero', genre: 'Melodic Punk Rock' },
+        { name: 'Belvedere', genre: 'Skate Punk' },
+        { name: 'Blood Command', genre: 'Deathpop / Punk Rock', badge: 'Imprescindible' },
+        { name: 'Fuet!', genre: 'Punk / Hardcore', badge: 'Imprescindible' },
+      ]},
+      { id: 'desert', label: 'DESERT', bands: [
+        { name: 'Blues Pills', genre: 'Blues Rock / Psychedelic Rock', badge: 'Recomendable' },
+        { name: 'Psychonaut', genre: 'Post-Metal / Sludge', badge: 'Imprescindible' },
+        { name: 'Ciclonautas', genre: 'Rock Urbano / Alternativo' },
+        { name: 'Vulvarine', genre: "Rock 'n' Roll / Heavy Rock" },
+        { name: 'Silly Goose', genre: 'Nu-Metal / Rap Rock', badge: 'Imprescindible' },
+        { name: 'Band Contest', genre: 'Por confirmar (Ganador concurso)' },
+      ]},
     ]
   },
   {
-    id: 'viernes',
-    label: 'VIERNES',
+    id: 'viernes', label: 'VIERNES',
     stages: [
-      {
-        id: 'main', label: 'MAIN', color: '#d4a017',
-        bands: [
-          { name: 'Limp Bizkit', genre: 'Nu Metal' },
-          { name: 'Trivium', genre: 'Heavy Metal / Metalcore' },
-          { name: 'Bleed From Within', genre: 'Groove Metal / Metalcore' },
-          { name: 'The Rasmus', genre: 'Alternative Rock / Gothic Rock' },
-          { name: 'Nevertel', genre: 'Nu-Metal / Alternative Rock' },
-          { name: 'Blaze The Trail', genre: 'Melodic Hardcore / Metalcore' },
-        ]
-      },
-      {
-        id: 'ritual', label: 'RITUAL', color: '#cc0000',
-        bands: [
-          { name: 'Cavalera Chaos A.D.', genre: 'Thrash / Groove Metal (Set Especial)' },
-          { name: 'Gaerea', genre: 'Black Metal Atmosférico' },
-          { name: 'Hulder', genre: 'Black Metal' },
-          { name: 'Not Yet', genre: 'Metalcore / Hardcore' },
-          { name: 'Okkulthist', genre: 'Death Metal' },
-          { name: 'Nukore', genre: 'Nu-Metal / Hardcore' },
-        ]
-      },
-      {
-        id: 'chaos', label: 'CHAOS', color: '#e05c00',
-        bands: [
-          { name: 'House of Protection', genre: 'Post-Hardcore / Electronic' },
-          { name: 'Dying Wish', genre: 'Metalcore' },
-          { name: 'End It', genre: 'Hardcore Punk' },
-          { name: 'Initiate', genre: 'Hardcore Punk' },
-          { name: 'Oslo Ovnies', genre: 'Post-Hardcore / Math Rock' },
-          { name: 'Pants Off', genre: 'Pop Punk / Punk Rock' },
-        ]
-      },
-      {
-        id: 'desert', label: 'DESERT', color: '#8b7355',
-        bands: [
-          { name: 'Borknagar', genre: 'Progressive Black / Viking Metal' },
-          { name: 'Rosalie Cunningham', genre: 'Psychedelic Folk Rock' },
-          { name: 'Return To Dust', genre: 'Grunge / Alternative Rock' },
-          { name: 'Madmess', genre: 'Stoner / Psychedelic Rock' },
-          { name: 'Mourir', genre: 'Black Metal / Sludge' },
-          { name: 'Band Contest', genre: 'Por confirmar (Ganador concurso)' },
-        ]
-      },
+      { id: 'main', label: 'MAIN', bands: [
+        { name: 'Limp Bizkit', genre: 'Nu Metal' },
+        { name: 'Trivium', genre: 'Heavy Metal / Metalcore' },
+        { name: 'Bleed From Within', genre: 'Groove Metal / Metalcore' },
+        { name: 'The Rasmus', genre: 'Alternative Rock / Gothic Rock' },
+        { name: 'Nevertel', genre: 'Nu-Metal / Alternative Rock' },
+        { name: 'Blaze The Trail', genre: 'Melodic Hardcore / Metalcore' },
+      ]},
+      { id: 'ritual', label: 'RITUAL', bands: [
+        { name: 'Cavalera Chaos A.D.', genre: 'Thrash / Groove Metal' },
+        { name: 'Gaerea', genre: 'Black Metal Atmosférico' },
+        { name: 'Hulder', genre: 'Black Metal' },
+        { name: 'Not Yet', genre: 'Metalcore / Hardcore' },
+        { name: 'Okkulthist', genre: 'Death Metal' },
+        { name: 'Nukore', genre: 'Nu-Metal / Hardcore' },
+      ]},
+      { id: 'chaos', label: 'CHAOS', bands: [
+        { name: 'House of Protection', genre: 'Post-Hardcore / Electronic' },
+        { name: 'Dying Wish', genre: 'Metalcore' },
+        { name: 'End It', genre: 'Hardcore Punk' },
+        { name: 'Initiate', genre: 'Hardcore Punk' },
+        { name: 'Oslo Ovnies', genre: 'Post-Hardcore / Math Rock' },
+        { name: 'Pants Off', genre: 'Pop Punk / Punk Rock' },
+      ]},
+      { id: 'desert', label: 'DESERT', bands: [
+        { name: 'Borknagar', genre: 'Progressive Black / Viking Metal' },
+        { name: 'Rosalie Cunningham', genre: 'Psychedelic Folk Rock' },
+        { name: 'Return To Dust', genre: 'Grunge / Alternative Rock' },
+        { name: 'Madmess', genre: 'Stoner / Psychedelic Rock' },
+        { name: 'Mourir', genre: 'Black Metal / Sludge' },
+        { name: 'Band Contest', genre: 'Por confirmar (Ganador concurso)' },
+      ]},
     ]
   },
   {
-    id: 'sabado',
-    label: 'SÁBADO',
+    id: 'sabado', label: 'SÁBADO',
     stages: [
-      {
-        id: 'main', label: 'MAIN', color: '#d4a017',
-        bands: [
-          { name: 'Marilyn Manson', genre: 'Industrial Metal / Shock Rock' },
-          { name: 'Mastodon', genre: 'Progressive / Sludge Metal' },
-          { name: 'P.O.D.', genre: 'Nu Metal / Reggae Rock' },
-          { name: 'Imminence', genre: 'Post-Hardcore / Alternative Metal' },
-          { name: 'Hamlet', genre: 'Metal Alternativo' },
-          { name: 'Iscream Never Ground', genre: 'Electronicore / J-Rock' },
-        ]
-      },
-      {
-        id: 'ritual', label: 'RITUAL', color: '#cc0000',
-        bands: [
-          { name: 'Blood Incantation', genre: 'Progressive Death Metal' },
-          { name: 'Dogma', genre: 'Symphonic Metal / Heavy Metal' },
-          { name: 'Distant', genre: 'Downtempo Deathcore' },
-          { name: 'Hand of Juno', genre: 'Industrial Metal' },
-          { name: 'Todomal', genre: 'Doom Rock / Dark Ambient' },
-          { name: 'Stellvris', genre: 'Modern Metalcore' },
-        ]
-      },
-      {
-        id: 'chaos', label: 'CHAOS', color: '#e05c00',
-        bands: [
-          { name: 'Converge', genre: 'Mathcore / Metalcore' },
-          { name: "Harm's Way", genre: 'Metallic Hardcore' },
-          { name: 'Gridiron', genre: 'Hardcore / Beatdown' },
-          { name: 'Frontierer', genre: 'Mathcore / Noise Metal' },
-          { name: 'The Family Men', genre: 'Hardcore / Punk' },
-          { name: 'Donuts Hole', genre: 'Metal Alternativo / Metalcore' },
-        ]
-      },
-      {
-        id: 'desert', label: 'DESERT', color: '#8b7355',
-        bands: [
-          { name: 'The Vintage Caravan', genre: 'Stoner Rock / Hard Rock' },
-          { name: 'A.A. Williams', genre: 'Post-Rock / Gothic Rock' },
-          { name: 'Last Train', genre: 'Indie Rock / Alternative Rock' },
-          { name: 'The Gems', genre: 'Classic Rock / Hard Rock' },
-          { name: 'Kruddö', genre: 'Stoner / Doom Metal' },
-          { name: 'Band Contest', genre: 'Por confirmar (Ganador concurso)' },
-        ]
-      },
+      { id: 'main', label: 'MAIN', bands: [
+        { name: 'Marilyn Manson', genre: 'Industrial Metal / Shock Rock' },
+        { name: 'Mastodon', genre: 'Progressive / Sludge Metal' },
+        { name: 'P.O.D.', genre: 'Nu Metal / Reggae Rock' },
+        { name: 'Imminence', genre: 'Post-Hardcore / Alternative Metal' },
+        { name: 'Hamlet', genre: 'Metal Alternativo' },
+        { name: 'Iscream Never Ground', genre: 'Electronicore / J-Rock' },
+      ]},
+      { id: 'ritual', label: 'RITUAL', bands: [
+        { name: 'Blood Incantation', genre: 'Progressive Death Metal' },
+        { name: 'Dogma', genre: 'Symphonic Metal / Heavy Metal' },
+        { name: 'Distant', genre: 'Downtempo Deathcore' },
+        { name: 'Hand of Juno', genre: 'Industrial Metal' },
+        { name: 'Todomal', genre: 'Doom Rock / Dark Ambient' },
+        { name: 'Stellvris', genre: 'Modern Metalcore' },
+      ]},
+      { id: 'chaos', label: 'CHAOS', bands: [
+        { name: 'Converge', genre: 'Mathcore / Metalcore' },
+        { name: "Harm's Way", genre: 'Metallic Hardcore' },
+        { name: 'Gridiron', genre: 'Hardcore / Beatdown' },
+        { name: 'Frontierer', genre: 'Mathcore / Noise Metal' },
+        { name: 'The Family Men', genre: 'Hardcore / Punk' },
+        { name: 'Donuts Hole', genre: 'Metal Alternativo / Metalcore' },
+      ]},
+      { id: 'desert', label: 'DESERT', bands: [
+        { name: 'The Vintage Caravan', genre: 'Stoner Rock / Hard Rock' },
+        { name: 'A.A. Williams', genre: 'Post-Rock / Gothic Rock' },
+        { name: 'Last Train', genre: 'Indie Rock / Alternative Rock' },
+        { name: 'The Gems', genre: 'Classic Rock / Hard Rock' },
+        { name: 'Kruddö', genre: 'Stoner / Doom Metal' },
+        { name: 'Band Contest', genre: 'Por confirmar (Ganador concurso)' },
+      ]},
     ]
   },
 ];
+
+const schedule = {
+  miercoles: {
+    main:   [
+      { name: 'Annisokay',          start: '15:25', end: '16:15' },
+      { name: 'Man With A Mission',  start: '16:55', end: '17:45' },
+      { name: 'President',           start: '18:30', end: '19:20' },
+      { name: 'Thrown',              start: '20:10', end: '21:00' },
+      { name: 'A Day To Remember',   start: '21:50', end: '23:00' },
+      { name: 'Sabaton',             start: '00:00', end: '01:50' },
+    ],
+    ritual: [
+      { name: 'Aneuma',          start: '16:15', end: '16:55' },
+      { name: 'TSS',             start: '17:45', end: '18:30' },
+      { name: 'The Pretty Wild', start: '19:20', end: '20:10' },
+      { name: 'The Browning',    start: '21:00', end: '21:50' },
+      { name: 'Self Deception',  start: '23:00', end: '23:55' },
+      { name: 'Testament',       start: '01:50', end: '03:00' },
+    ],
+    chaos: [
+      { name: 'Crowded',                start: '15:25', end: '16:10' },
+      { name: 'God Complex',            start: '16:55', end: '17:45' },
+      { name: 'Immortal Disfigurement', start: '18:30', end: '19:20' },
+      { name: 'The Scratch',            start: '20:05', end: '21:05' },
+      { name: 'Get The Shot',           start: '22:00', end: '23:00' },
+      { name: 'High Vis',               start: '00:00', end: '01:10' },
+    ],
+    desert: [
+      { name: 'Black Maracas', start: '17:45', end: '18:35' },
+      { name: 'Cardiac',       start: '19:20', end: '20:10' },
+      { name: 'Lampr3a',       start: '21:00', end: '22:00' },
+      { name: 'Faetooth',      start: '01:10', end: '02:20' },
+    ],
+  },
+  jueves: {
+    main: [
+      { name: 'Fallen At Dawn',   start: '15:25', end: '16:10' },
+      { name: 'Caskets',          start: '16:50', end: '17:40' },
+      { name: 'Angelus Apatrida', start: '18:50', end: '19:30' },
+      { name: 'Iron Maiden',      start: '20:50', end: '23:00' },
+      { name: 'Anthrax',          start: '00:20', end: '01:35' },
+      { name: 'Feuerschwanz',     start: '02:25', end: '03:25' },
+    ],
+    ritual: [
+      { name: 'Her Anxiety',          start: '16:10', end: '16:50' },
+      { name: 'Burning Witches',      start: '17:40', end: '18:30' },
+      { name: 'The Funeral Portrait', start: '19:30', end: '20:30' },
+      { name: 'Caliban',              start: '23:10', end: '00:20' },
+      { name: 'Witch Club Satan',     start: '01:35', end: '02:25' },
+    ],
+    chaos: [
+      { name: 'Fuet!',               start: '15:45', end: '16:35' },
+      { name: 'Blood Command',       start: '17:20', end: '18:20' },
+      { name: 'Belvedere',           start: '19:30', end: '20:30' },
+      { name: 'The Callous Daoboys', start: '21:35', end: '22:35' },
+      { name: 'Lionheart',           start: '23:45', end: '01:00' },
+      { name: 'Authority Zero',      start: '02:30', end: '03:10' },
+    ],
+    desert: [
+      { name: 'Band Contest', start: '15:20', end: '16:00' },
+      { name: 'Silly Goose',  start: '16:35', end: '17:20' },
+      { name: 'Blues Pills',  start: '18:20', end: '19:30' },
+      { name: 'Ciclonautas', start: '20:30', end: '21:30' },
+      { name: 'Vulvarine',   start: '22:35', end: '23:35' },
+      { name: 'Psychonaut',  start: '01:00', end: '02:00' },
+    ],
+  },
+  viernes: {
+    main: [
+      { name: 'Blaze The Trail',   start: '15:50', end: '16:35' },
+      { name: 'The Rasmus',        start: '17:20', end: '18:10' },
+      { name: 'Bleed From Within', start: '19:00', end: '20:00' },
+      { name: 'Trivium',           start: '20:50', end: '22:00' },
+      { name: 'Limp Bizkit',       start: '23:10', end: '00:30' },
+      { name: 'Cavalera Chaos A.D.', start: '01:25', end: '02:40' },
+    ],
+    ritual: [
+      { name: 'Nukore',   start: '15:05', end: '15:50' },
+      { name: 'Not Yet',  start: '16:35', end: '17:20' },
+      { name: 'Okkulthist', start: '18:10', end: '19:00' },
+      { name: 'Hulder',   start: '20:00', end: '20:50' },
+      { name: 'Gaerea',   start: '22:00', end: '23:00' },
+      { name: 'Nevertel', start: '00:35', end: '01:25' },
+    ],
+    chaos: [
+      { name: 'Band Contest',        start: '15:05', end: '15:45' },
+      { name: 'Pants Off',           start: '15:50', end: '16:35' },
+      { name: 'Oslo Ovnies',         start: '17:20', end: '18:10' },
+      { name: 'Initiate',            start: '19:00', end: '19:50' },
+      { name: 'Dying Wish',          start: '20:50', end: '21:50' },
+      { name: 'End It',              start: '23:00', end: '00:00' },
+      { name: 'House of Protection', start: '01:40', end: '02:40' },
+    ],
+    desert: [
+      { name: 'Madmess',            start: '16:35', end: '17:20' },
+      { name: 'Mourir',             start: '18:10', end: '19:00' },
+      { name: 'Rosalie Cunningham', start: '20:00', end: '20:50' },
+      { name: 'Return To Dust',     start: '22:00', end: '23:00' },
+      { name: 'Borknagar',          start: '00:35', end: '01:45' },
+    ],
+  },
+  sabado: {
+    main: [
+      { name: 'Iscream Never Ground', start: '14:50', end: '15:40' },
+      { name: 'Hamlet',               start: '16:25', end: '17:15' },
+      { name: 'Imminence',            start: '18:05', end: '19:05' },
+      { name: 'P.O.D.',               start: '19:55', end: '20:55' },
+      { name: 'Mastodon',             start: '21:55', end: '23:10' },
+      { name: 'Marilyn Manson',       start: '00:30', end: '02:00' },
+    ],
+    ritual: [
+      { name: 'Stellvris',         start: '15:40', end: '16:25' },
+      { name: 'Todomal',           start: '17:15', end: '18:05' },
+      { name: 'Hand of Juno',      start: '19:05', end: '19:55' },
+      { name: 'Distant',           start: '20:55', end: '21:55' },
+      { name: 'Dogma',             start: '23:10', end: '00:20' },
+      { name: 'Blood Incantation', start: '02:10', end: '03:25' },
+    ],
+    chaos: [
+      { name: 'Donuts Hole',    start: '15:40', end: '16:25' },
+      { name: 'The Family Men', start: '17:15', end: '18:05' },
+      { name: 'Frontierer',     start: '19:05', end: '19:55' },
+      { name: 'Gridiron',       start: '20:55', end: '21:55' },
+      { name: 'Converge',       start: '23:10', end: '00:20' },
+      { name: "Harm's Way",     start: '02:10', end: '03:20' },
+    ],
+    desert: [
+      { name: 'Band Contest',        start: '14:50', end: '15:30' },
+      { name: 'Kruddö',              start: '16:25', end: '17:15' },
+      { name: 'The Gems',            start: '18:15', end: '19:05' },
+      { name: 'Cwfen',               start: '19:55', end: '20:55' },
+      { name: 'A.A. Williams',       start: '21:55', end: '22:55' },
+      { name: 'The Vintage Caravan', start: '00:50', end: '02:00' },
+    ],
+  },
+};
+
+const badgeMap: Record<string, string> = {};
+for (const day of days) {
+  for (const stage of day.stages) {
+    for (const band of stage.bands) {
+      if (band.badge) badgeMap[band.name] = band.badge;
+    }
+  }
+}
+
+const scheduleMap: Record<string, { start: string; end: string }> = {};
+for (const stages of Object.values(schedule)) {
+  for (const bands of Object.values(stages)) {
+    for (const band of bands) {
+      scheduleMap[band.name] = { start: band.start, end: band.end };
+    }
+  }
+}
+
+const processedSchedule = Object.fromEntries(
+  Object.entries(schedule).map(([day, sched]) => [day, processDay(sched, badgeMap)])
+);
 ---
 
 <!DOCTYPE html>
@@ -231,440 +400,661 @@ const days = [
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Resurrection Fest MMXXVI — Lineup</title>
+  <title>Resurrection Fest MMXXVI</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Metal+Mania&family=Oswald:wght@400;500;600;700&family=Barlow+Condensed:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Barlow+Condensed:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      --bg:         #f0ece3;
-      --bg-card:    #f7f4ee;
-      --bg-hover:   #ece8df;
-      --gold:       #b8860b;
-      --red:        #c0392b;
-      --orange:     #c84b00;
-      --sand:       #7a6548;
-      --text:       #1a1917;
-      --text-dim:   #4a4845;
-      --text-muted: #9a9895;
-      --border:     #ddd9d0;
-      --border-strong: #c4bfb5;
+      --cream:   #f0ece3;
+      --card:    #faf9f5;
+      --card2:   #f3f0e8;
+      --border:  #e0dbd0;
+      --border2: #ccc8be;
+      --text:    #1c1a18;
+      --muted:   #7a7774;
+      --muted2:  #a8a49e;
+      --main:    #b8860b;
+      --ritual:  #c0392b;
+      --chaos:   #c84b00;
+      --desert:  #2e7d6e;
+      --must:    #d49500;
+      --rec:     #3d8050;
+      --shadow-sm: 0 1px 3px rgba(0,0,0,.07), 0 1px 2px rgba(0,0,0,.04);
+      --shadow:    0 2px 8px rgba(0,0,0,.08), 0 1px 3px rgba(0,0,0,.05);
+      --shadow-md: 0 4px 16px rgba(0,0,0,.1), 0 2px 6px rgba(0,0,0,.06);
     }
 
-    html { scroll-behavior: smooth; }
-
+    html { font-size: 16px; }
     body {
-      background-color: var(--bg);
+      background: var(--cream);
       color: var(--text);
       font-family: 'Barlow Condensed', sans-serif;
       min-height: 100vh;
-      overflow-x: hidden;
+      line-height: 1.4;
     }
 
-    /* ==================== DAY TABS ==================== */
-    .tabs-wrapper {
+    /* ── Layout ─────────────────────── */
+    .app { display: flex; min-height: 100vh; }
+    .sidebar {
+      display: none;
+      width: 160px;
+      flex-shrink: 0;
+      flex-direction: column;
+      background: var(--card);
+      border-right: 1px solid var(--border);
       position: sticky;
       top: 0;
-      z-index: 100;
-      background: #f7f4ee;
-      border-bottom: 2px solid var(--border);
-      box-shadow: 0 1px 8px rgba(0,0,0,0.06);
+      height: 100vh;
+      z-index: 40;
+      padding-top: 28px;
+    }
+    .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+
+    @media (min-width: 1024px) {
+      .sidebar { display: flex; }
+      .topnav  { display: none !important; }
     }
 
-    .day-tabs {
+    /* ── Sidebar nav ─────────────────── */
+    .sidebar-label {
+      padding: 0 20px 12px;
+      font-family: 'Oswald', sans-serif;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: .3em;
+      text-transform: uppercase;
+      color: var(--muted2);
+    }
+    .view-btn {
       display: flex;
-      justify-content: flex-start;
-      max-width: 1600px;
-      margin: 0 auto;
-      padding: 0;
+      align-items: center;
+      gap: 10px;
+      width: 100%;
+      padding: 10px 20px;
+      background: none;
+      border: none;
+      border-left: 3px solid transparent;
+      font-family: 'Oswald', sans-serif;
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      cursor: pointer;
+      transition: color .15s, background .15s, border-color .15s;
+      text-align: left;
+    }
+    .view-btn:hover { color: var(--text); background: var(--card2); }
+    .view-btn.active { color: var(--text); background: var(--card2); border-left-color: var(--ritual); }
+    .view-btn .icon { font-size: 15px; line-height: 1; }
+
+    /* ── Mobile top nav ──────────────── */
+    .topnav {
+      display: flex;
+      height: 44px;
+      background: var(--card);
+      border-bottom: 1px solid var(--border);
+      box-shadow: var(--shadow-sm);
+    }
+    .topnav .view-btn {
+      flex: 1;
+      justify-content: center;
+      border-left: none;
+      border-bottom: 3px solid transparent;
+      padding: 0 8px;
+      font-size: 12px;
+    }
+    .topnav .view-btn.active { background: none; border-bottom-color: var(--ritual); }
+
+    /* ── Day tabs ────────────────────── */
+    .tabs-wrap {
+      position: sticky;
+      top: 44px;
+      z-index: 30;
+      background: var(--card);
+      border-bottom: 1px solid var(--border);
+      box-shadow: var(--shadow-sm);
+    }
+    @media (min-width: 1024px) { .tabs-wrap { top: 0; } }
+    .tabs {
+      display: flex;
       overflow-x: auto;
-      -webkit-overflow-scrolling: touch;
       scrollbar-width: none;
     }
-
-    .day-tabs::-webkit-scrollbar { display: none; }
-
-    @media (min-width: 640px) {
-      .day-tabs {
-        justify-content: center;
-        overflow-x: visible;
-      }
-    }
-
+    .tabs::-webkit-scrollbar { display: none; }
     .tab-btn {
+      flex-shrink: 0;
+      padding: 12px 20px;
       background: none;
       border: none;
       border-bottom: 3px solid transparent;
-      margin-bottom: -2px;
-      cursor: pointer;
+      margin-bottom: -1px;
       font-family: 'Oswald', sans-serif;
-      font-size: 0.95rem;
+      font-size: 14px;
       font-weight: 600;
-      letter-spacing: 0.1em;
+      letter-spacing: .12em;
       text-transform: uppercase;
-      color: var(--text-muted);
-      padding: 1rem 1.4rem;
-      position: relative;
-      transition: color 0.15s ease, border-color 0.15s ease;
+      color: var(--muted);
+      cursor: pointer;
+      transition: color .15s, border-color .15s;
       white-space: nowrap;
-      flex-shrink: 0;
     }
+    .tab-btn:hover { color: var(--text); }
+    .tab-btn.active { color: var(--text); border-bottom-color: var(--ritual); }
 
-    @media (min-width: 640px) {
-      .tab-btn { font-size: 1rem; padding: 1.1rem 2rem; }
-    }
+    /* ── View / section toggling ─────── */
+    .view { display: none; }
+    .view.active { display: block; }
+    .day-section { display: none; }
+    .day-section.active { display: block; animation: fadeUp .22s ease; }
+    @keyframes fadeUp { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: none; } }
 
-    .tab-btn:hover { color: var(--text-dim); }
-
-    .tab-btn.active {
-      color: var(--text);
-      border-bottom-color: var(--red);
-    }
-
-    /* ==================== DAY SECTIONS ==================== */
-    .day-section { display: none; animation: fadeIn 0.25s ease; }
-    .day-section.active { display: block; }
-
-    @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(6px); }
-      to   { opacity: 1; transform: translateY(0); }
-    }
-
-    /* ==================== STAGES GRID ==================== */
+    /* ── Lineup grid ─────────────────── */
     .stages-grid {
       display: grid;
       grid-template-columns: 1fr;
-      max-width: 1600px;
-      margin: 0 auto;
     }
+    @media (min-width: 640px)  { .stages-grid { grid-template-columns: 1fr 1fr; } }
+    @media (min-width: 1280px) { .stages-grid { grid-template-columns: repeat(4, 1fr); } }
 
-    @media (min-width: 700px) {
-      .stages-grid { grid-template-columns: repeat(2, 1fr); }
-    }
-
-    @media (min-width: 1200px) {
-      .stages-grid { grid-template-columns: repeat(4, 1fr); }
-    }
-
-    /* ==================== STAGE COLUMN ==================== */
     .stage-col {
       border-bottom: 1px solid var(--border);
     }
-
-    .stage-col:last-child { border-bottom: none; }
-
-    @media (min-width: 700px) {
-      .stage-col {
-        border-bottom: none;
-        border-right: 1px solid var(--border);
-      }
+    @media (min-width: 640px) {
+      .stage-col { border-right: 1px solid var(--border); }
       .stage-col:nth-child(2n) { border-right: none; }
       .stage-col:nth-child(3),
       .stage-col:nth-child(4) { border-top: 1px solid var(--border); }
+      .stage-col:last-child { border-bottom: 0; }
     }
-
-    @media (min-width: 1200px) {
+    @media (min-width: 1280px) {
       .stage-col { border-right: 1px solid var(--border); border-top: none !important; }
       .stage-col:nth-child(2n) { border-right: 1px solid var(--border); }
-      .stage-col:last-child { border-right: none; }
+      .stage-col:last-child { border-right: none; border-bottom: none; }
     }
 
-    .stage-header {
-      padding: 1rem 1rem 0.9rem;
-      border-bottom: 3px solid var(--border);
+    /* Stage header */
+    .s-hdr {
       display: flex;
       align-items: center;
-      gap: 0.6rem;
-      background: #fff;
-      position: sticky;
-      top: 52px;
-      z-index: 10;
+      gap: 8px;
+      padding: 14px 16px 11px;
+      background: var(--card);
+      border-bottom: 2px solid var(--border);
     }
+    [data-stage="main"]   .s-hdr { border-bottom-color: var(--main); }
+    [data-stage="ritual"] .s-hdr { border-bottom-color: var(--ritual); }
+    [data-stage="chaos"]  .s-hdr { border-bottom-color: var(--chaos); }
+    [data-stage="desert"] .s-hdr { border-bottom-color: var(--desert); }
 
-    @media (min-width: 640px) {
-      .stage-header { padding: 1.2rem 1.25rem 1.1rem; top: 56px; }
-    }
-
-    .stage-icon {
+    .s-dot {
       width: 8px; height: 8px;
       border-radius: 50%;
       flex-shrink: 0;
     }
+    [data-stage="main"]   .s-dot { background: var(--main); }
+    [data-stage="ritual"] .s-dot { background: var(--ritual); }
+    [data-stage="chaos"]  .s-dot { background: var(--chaos); }
+    [data-stage="desert"] .s-dot { background: var(--desert); }
 
-    .stage-name {
+    .s-name {
       font-family: 'Oswald', sans-serif;
-      font-size: 1.1rem;
+      font-size: 16px;
       font-weight: 700;
-      letter-spacing: 0.12em;
+      letter-spacing: .15em;
       text-transform: uppercase;
     }
+    [data-stage="main"]   .s-name { color: var(--main); }
+    [data-stage="ritual"] .s-name { color: var(--ritual); }
+    [data-stage="chaos"]  .s-name { color: var(--chaos); }
+    [data-stage="desert"] .s-name { color: var(--desert); }
 
-    .stage-col[data-stage="main"]   .stage-name  { color: #b8860b; }
-    .stage-col[data-stage="main"]   .stage-icon  { background: #b8860b; }
-    .stage-col[data-stage="main"]   .stage-header{ border-bottom-color: #b8860b; }
+    /* Band list */
+    .band-list { padding: 10px 10px 14px; display: flex; flex-direction: column; gap: 6px; }
 
-    .stage-col[data-stage="ritual"] .stage-name  { color: #c0392b; }
-    .stage-col[data-stage="ritual"] .stage-icon  { background: #c0392b; }
-    .stage-col[data-stage="ritual"] .stage-header{ border-bottom-color: #c0392b; }
-
-    .stage-col[data-stage="chaos"]  .stage-name  { color: #c84b00; }
-    .stage-col[data-stage="chaos"]  .stage-icon  { background: #c84b00; }
-    .stage-col[data-stage="chaos"]  .stage-header{ border-bottom-color: #c84b00; }
-
-    .stage-col[data-stage="desert"] .stage-name  { color: #7a6548; }
-    .stage-col[data-stage="desert"] .stage-icon  { background: #7a6548; }
-    .stage-col[data-stage="desert"] .stage-header{ border-bottom-color: #7a6548; }
-
-    /* ==================== BAND LIST ==================== */
-    .bands-list {
-      padding: 0.5rem;
-      display: flex;
-      flex-direction: column;
-      gap: 0.3rem;
-    }
-
-    @media (min-width: 640px) { .bands-list { padding: 0.6rem; } }
-
-    /* ==================== BAND CARD ==================== */
     .band-card {
-      padding: 0.75rem 0.85rem;
-      background: var(--bg-card);
+      background: var(--card);
       border: 1px solid var(--border);
-      border-radius: 4px;
-      cursor: default;
-      transition: background 0.15s ease, border-color 0.15s ease;
+      border-radius: 7px;
+      padding: 10px 12px 9px;
+      box-shadow: var(--shadow-sm);
       position: relative;
       overflow: hidden;
+      transition: box-shadow .15s, transform .12s, background .1s;
     }
-
     .band-card::before {
       content: '';
       position: absolute;
-      left: 0; top: 0; bottom: 0;
+      inset: 0 auto 0 0;
       width: 3px;
       background: transparent;
-      transition: background 0.15s ease;
+      transition: background .15s;
+    }
+    [data-stage="main"]   .band-card:hover::before { background: var(--main); }
+    [data-stage="ritual"] .band-card:hover::before { background: var(--ritual); }
+    [data-stage="chaos"]  .band-card:hover::before { background: var(--chaos); }
+    [data-stage="desert"] .band-card:hover::before { background: var(--desert); }
+    .band-card:hover {
+      background: var(--card2);
+      box-shadow: var(--shadow);
+      transform: translateY(-1px);
     }
 
-    .band-card:hover { background: var(--bg-hover); }
-
-    .stage-col[data-stage="main"]   .band-card:hover::before { background: #b8860b; }
-    .stage-col[data-stage="ritual"] .band-card:hover::before { background: #c0392b; }
-    .stage-col[data-stage="chaos"]  .band-card:hover::before { background: #c84b00; }
-    .stage-col[data-stage="desert"] .band-card:hover::before { background: #7a6548; }
-
-    .band-card.headliner {
-      border-color: var(--border-strong);
-      background: #fafaf8;
-    }
-
-    .stage-col[data-stage="main"]   .band-card.headliner { border-left: 3px solid #b8860b; }
-    .stage-col[data-stage="ritual"] .band-card.headliner { border-left: 3px solid #c0392b; }
-    .stage-col[data-stage="chaos"]  .band-card.headliner { border-left: 3px solid #c84b00; }
-    .stage-col[data-stage="desert"] .band-card.headliner { border-left: 3px solid #7a6548; }
-
-    .band-top {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 0.5rem;
-    }
-
-    .badge-must, .badge-rec {
-      flex-shrink: 0;
-      font-family: 'Oswald', sans-serif;
-      font-size: 0.6rem;
-      font-weight: 700;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      padding: 0.2em 0.55em;
-      border-radius: 3px;
-      white-space: nowrap;
-    }
-
-    .badge-must { background: #e8a000; color: #fff; }
-    .badge-rec  { background: #4a8f5c; color: #fff; }
-
+    .band-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
     .band-name {
-      display: block;
       font-family: 'Oswald', sans-serif;
-      font-size: 0.95rem;
+      font-size: 15px;
       font-weight: 600;
-      letter-spacing: 0.03em;
+      letter-spacing: .06em;
+      text-transform: uppercase;
       color: var(--text);
       line-height: 1.2;
-      text-transform: uppercase;
     }
 
-    .band-card.headliner .band-name { font-size: 1rem; }
-
-    .band-genre {
-      display: inline-block;
-      margin-top: 0.3rem;
-      font-size: 0.67rem;
-      font-weight: 600;
-      letter-spacing: 0.05em;
+    .badge {
+      flex-shrink: 0;
+      font-family: 'Oswald', sans-serif;
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: .1em;
       text-transform: uppercase;
-      padding: 0.18em 0.5em;
+      padding: 2px 6px;
       border-radius: 3px;
-      line-height: 1.5;
+      color: #fff;
+      margin-top: 1px;
+    }
+    .badge-must { background: var(--must); }
+    .badge-rec  { background: var(--rec); }
+
+    .band-time {
+      font-family: 'Oswald', sans-serif;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--muted);
+      letter-spacing: .04em;
+      margin-top: 3px;
+      display: block;
     }
 
-    /* ==================== GENRE TAG COLORS (light bg) ==================== */
-    .tag-power    { background: #fef3cd; color: #8a6200; border: 1px solid #f5d87a; }
-    .tag-thrash   { background: #fff0e0; color: #a04800; border: 1px solid #f5b87a; }
-    .tag-death    { background: #fde8e8; color: #8b1a1a; border: 1px solid #e8a0a0; }
-    .tag-deathcore{ background: #fde8e8; color: #9b2020; border: 1px solid #e8a0a0; }
-    .tag-black    { background: #f0eaf8; color: #5c2d91; border: 1px solid #c9a8e8; }
-    .tag-doom     { background: #eaf2e0; color: #3d6020; border: 1px solid #a8cc80; }
-    .tag-math     { background: #ede8f8; color: #4a1d91; border: 1px solid #b89ae0; }
-    .tag-metalcore{ background: #fdecea; color: #922010; border: 1px solid #e8a090; }
-    .tag-hardcore { background: #e6f4ea; color: #1e6830; border: 1px solid #88cc9a; }
-    .tag-nu       { background: #e0f4f8; color: #0d6680; border: 1px solid #78c8de; }
-    .tag-post     { background: #e6eef8; color: #1a4a8a; border: 1px solid #88aee0; }
-    .tag-punk     { background: #fff4e0; color: #8a5000; border: 1px solid #f5c878; }
-    .tag-folk     { background: #f4ece0; color: #6a4010; border: 1px solid #d4b080; }
-    .tag-prog     { background: #ede6f8; color: #4a1880; border: 1px solid #c0a0e0; }
-    .tag-industrial{background: #eaeef2; color: #3a4a5a; border: 1px solid #a0b0c0; }
-    .tag-stoner   { background: #f8f0d8; color: #7a6000; border: 1px solid #e0c060; }
-    .tag-heavy    { background: #f8e8e8; color: #7a1828; border: 1px solid #e0a0a8; }
-    .tag-rock     { background: #f0f0ee; color: #505050; border: 1px solid #c0c0bc; }
-    .tag-tbc      { background: #f5f5f3; color: #909090; border: 1px dashed #c8c8c0; font-style: italic; }
-    .tag-other    { background: #f2f2f0; color: #686868; border: 1px solid #c8c8c0; }
-
-    /* ==================== BAND COUNT ==================== */
-    .band-count {
-      font-family: 'Oswald', sans-serif;
-      font-size: 0.68rem;
-      font-weight: 400;
-      color: var(--text-muted);
-      letter-spacing: 0.08em;
-      margin-left: auto;
-    }
-
-    /* ==================== FOOTER ==================== */
-    .site-footer {
-      text-align: center;
-      padding: 2rem 1.5rem;
-      border-top: 1px solid var(--border);
-      font-family: 'Oswald', sans-serif;
-      font-size: 0.7rem;
-      letter-spacing: 0.25em;
-      color: var(--text-muted);
+    .genre-tag {
+      display: inline-block;
+      margin-top: 5px;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: .05em;
       text-transform: uppercase;
+      padding: 2px 7px;
+      border-radius: 3px;
+      border: 1px solid;
+    }
+    .tag-power    { background:#fef3cd; color:#8a6200; border-color:#f5d87a; }
+    .tag-thrash   { background:#fff0e0; color:#a04800; border-color:#f5b87a; }
+    .tag-death    { background:#fde8e8; color:#8b1a1a; border-color:#e8a0a0; }
+    .tag-deathcore{ background:#fde8e8; color:#9b2020; border-color:#e8a0a0; }
+    .tag-black    { background:#f0eaf8; color:#5c2d91; border-color:#c9a8e8; }
+    .tag-doom     { background:#eaf2e0; color:#3d6020; border-color:#a8cc80; }
+    .tag-math     { background:#ede8f8; color:#4a1d91; border-color:#b89ae0; }
+    .tag-metalcore{ background:#fdecea; color:#922010; border-color:#e8a090; }
+    .tag-hardcore { background:#e6f4ea; color:#1e6830; border-color:#88cc9a; }
+    .tag-nu       { background:#e0f4f8; color:#0d6680; border-color:#78c8de; }
+    .tag-post     { background:#e6eef8; color:#1a4a8a; border-color:#88aee0; }
+    .tag-punk     { background:#fff4e0; color:#8a5000; border-color:#f5c878; }
+    .tag-folk     { background:#f4ece0; color:#6a4010; border-color:#d4b080; }
+    .tag-prog     { background:#ede6f8; color:#4a1880; border-color:#c0a0e0; }
+    .tag-industrial{background:#eaeef2; color:#3a4a5a; border-color:#a0b0c0; }
+    .tag-stoner   { background:#f8f0d8; color:#7a6000; border-color:#e0c060; }
+    .tag-heavy    { background:#f8e8e8; color:#7a1828; border-color:#e0a0a8; }
+    .tag-rock     { background:#f0f0ee; color:#505050; border-color:#c0c0bc; }
+    .tag-tbc      { background:#f5f5f3; color:#909090; border-color:#c8c8c0; font-style:italic; border-style:dashed; }
+    .tag-other    { background:#f2f2f0; color:#686868; border-color:#c8c8c0; }
+
+    /* ── Timetable ───────────────────── */
+    .timetable-scroll { overflow-x: auto; padding-bottom: 48px; }
+    .timetable-inner {
+      display: flex;
+      min-width: 380px;
+      position: relative;
     }
 
-    /* ==================== SCROLLBAR ==================== */
-    ::-webkit-scrollbar { width: 5px; height: 5px; }
-    ::-webkit-scrollbar-track { background: var(--bg); }
-    ::-webkit-scrollbar-thumb { background: #ccc; border-radius: 2px; }
-    ::-webkit-scrollbar-thumb:hover { background: #aaa; }
+    /* Legend */
+    .tt-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px 20px;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+      background: var(--card);
+    }
+    .tt-legend-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-family: 'Oswald', sans-serif;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .tt-legend-dot { width: 8px; height: 8px; border-radius: 50%; }
 
-    .ornament {
-      display: flex; align-items: center; gap: 1rem; padding: 0 2rem;
+    /* Ruler */
+    .t-ruler {
+      position: relative;
+      width: 46px;
+      flex-shrink: 0;
+      border-right: 1px solid var(--border);
+      background: var(--card);
     }
-    .ornament-line {
-      flex: 1; height: 1px;
-      background: linear-gradient(to right, transparent, var(--border));
+    .t-mark {
+      position: absolute;
+      right: 6px;
+      transform: translateY(-50%);
+      font-family: 'Oswald', sans-serif;
+      white-space: nowrap;
+      pointer-events: none;
     }
-    .ornament-line:first-child {
-      background: linear-gradient(to left, transparent, var(--border));
+    .t-mark.hour { font-size: 11px; font-weight: 600; color: var(--text); }
+    .t-mark.half { font-size: 9px; color: var(--muted2); }
+
+    /* Events area */
+    .t-events {
+      flex: 1;
+      position: relative;
     }
-    .ornament-diamond {
-      width: 5px; height: 5px;
-      background: var(--border-strong);
-      transform: rotate(45deg);
+    .t-line {
+      position: absolute;
+      left: 0; right: 0;
+      pointer-events: none;
     }
+    .t-line.hour { height: 1px; background: #c8c3b8; }
+    .t-line.half { height: 1px; background: #e8e4dd; }
+
+    /* Band blocks */
+    .t-band {
+      position: absolute;
+      border-radius: 6px;
+      overflow: hidden;
+      padding: 7px 9px 8px;
+      box-shadow: 0 1px 4px rgba(0,0,0,.1);
+      cursor: default;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      transition: filter .12s, z-index 0s, box-shadow .12s;
+    }
+    .t-band:hover { filter: brightness(.94); z-index: 20; box-shadow: var(--shadow); }
+    .t-band[data-stage="main"]   { border-left: 3px solid var(--main);   background: #fef6df; }
+    .t-band[data-stage="ritual"] { border-left: 3px solid var(--ritual); background: #fde9e7; }
+    .t-band[data-stage="chaos"]  { border-left: 3px solid var(--chaos);  background: #fdeee6; }
+    .t-band[data-stage="desert"] { border-left: 3px solid var(--desert); background: #e5f2ef; }
+
+    .t-top-row { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+    .t-stage-pill {
+      font-family: 'Oswald', sans-serif;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: .07em;
+      text-transform: uppercase;
+      padding: 2px 6px;
+      border-radius: 3px;
+      line-height: 1.4;
+      flex-shrink: 0;
+    }
+    .t-badge {
+      font-family: 'Oswald', sans-serif;
+      font-size: 9.5px;
+      font-weight: 700;
+      letter-spacing: .05em;
+      text-transform: uppercase;
+      padding: 2px 6px;
+      border-radius: 3px;
+      color: #fff;
+      line-height: 1.4;
+      flex-shrink: 0;
+    }
+    .t-badge.must { background: var(--must); }
+    .t-badge.rec  { background: var(--rec); }
+    .t-body {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      min-height: 0;
+      overflow: hidden;
+      padding: 4px 0;
+    }
+    .t-name {
+      font-family: 'Oswald', sans-serif;
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--text);
+      overflow: hidden;
+      line-height: 1.2;
+      display: -webkit-box;
+      -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical;
+    }
+    .t-time {
+      flex-shrink: 0;
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--muted);
+      white-space: nowrap;
+      line-height: 1;
+    }
+
+    /* ── Footer ──────────────────────── */
+    .footer {
+      margin-top: auto;
+      padding: 24px 16px;
+      text-align: center;
+      font-family: 'Oswald', sans-serif;
+      font-size: 10px;
+      letter-spacing: .3em;
+      text-transform: uppercase;
+      color: var(--muted2);
+      border-top: 1px solid var(--border);
+    }
+
+    /* ── Scrollbar ───────────────────── */
+    ::-webkit-scrollbar { width: 4px; height: 4px; }
+    ::-webkit-scrollbar-track { background: var(--cream); }
+    ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
   </style>
 </head>
-<body>
 
-  <nav class="tabs-wrapper" role="navigation" aria-label="Días del festival">
-    <div class="day-tabs">
-      {days.map((day, i) => (
-        <button
-          class={`tab-btn${i === 0 ? ' active' : ''}`}
-          data-target={day.id}
-          aria-controls={`day-${day.id}`}
-          aria-selected={i === 0 ? 'true' : 'false'}
-        >
-          {day.label}
-        </button>
+<body>
+<div class="app">
+
+  <!-- SIDEBAR (desktop) -->
+  <aside class="sidebar">
+    <p class="sidebar-label">Navegación</p>
+    <button class="view-btn active" data-view="horarios">
+      <span class="icon">⏱</span> Horarios
+    </button>
+    <button class="view-btn" data-view="lineup">
+      <span class="icon">☰</span> Lineup
+    </button>
+  </aside>
+
+  <!-- MAIN -->
+  <div class="main">
+
+    <!-- Mobile top nav -->
+    <nav class="topnav">
+      <button class="view-btn active" data-view="horarios">
+        <span class="icon">⏱</span> Horarios
+      </button>
+      <button class="view-btn" data-view="lineup">
+        <span class="icon">☰</span> Lineup
+      </button>
+    </nav>
+
+    <!-- Day tabs -->
+    <div class="tabs-wrap">
+      <div class="tabs">
+        {days.map((day, i) => (
+          <button
+            class={`tab-btn${i === 0 ? ' active' : ''}`}
+            data-target={day.id}
+            aria-selected={i === 0 ? 'true' : 'false'}
+          >
+            {day.label}
+          </button>
+        ))}
+      </div>
+    </div>
+
+    <!-- ══ LINEUP VIEW ══ -->
+    <div id="view-lineup" class="view">
+      {days.map((day, di) => (
+        <section class={`day-section${di === 0 ? ' active' : ''}`} id={`day-${day.id}`}>
+          <div class="stages-grid">
+            {day.stages.map(stage => (
+              <div class="stage-col" data-stage={stage.id}>
+                <div class="s-hdr">
+                  <span class="s-dot"></span>
+                  <span class="s-name">{stage.label}</span>
+                </div>
+                <ul class="band-list">
+                  {stage.bands.map(band => {
+                    const tag = getGenreTag(band.genre);
+                    const genre = band.genre.replace(' (Set Especial)', '').replace(' (Ganador concurso)', '');
+                    const sched = scheduleMap[band.name];
+                    return (
+                      <li class="band-card">
+                        <div class="band-top">
+                          <span class="band-name">{band.name}</span>
+                          {band.badge && (
+                            <span class={`badge ${band.badge === 'Recomendable' ? 'badge-rec' : 'badge-must'}`}>
+                              {band.badge}
+                            </span>
+                          )}
+                        </div>
+                        {sched && <span class="band-time">{sched.start} – {sched.end}</span>}
+                        <span class={`genre-tag ${tag}`}>{genre}</span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            ))}
+          </div>
+        </section>
       ))}
     </div>
-  </nav>
 
-  <main>
-    {days.map((day, di) => (
-      <section
-        class={`day-section${di === 0 ? ' active' : ''}`}
-        id={`day-${day.id}`}
-        aria-label={day.label}
-      >
-        <div class="stages-grid">
-          {day.stages.map((stage) => (
-            <div class="stage-col" data-stage={stage.id}>
-              <div class="stage-header">
-                <span class="stage-icon"></span>
-                <span class="stage-name">{stage.label}</span>
-              </div>
-              <ul class="bands-list" role="list">
-                {stage.bands.map((band, bi) => {
-                  const tagClass = getGenreTag(band.genre);
-                  const isHeadliner = bi === 0;
-                  const displayGenre = band.genre
-                    .replace(' (Set Especial)', '')
-                    .replace(' (Ganador concurso)', '');
-                  return (
-                    <li class={`band-card${isHeadliner ? ' headliner' : ''}`} role="listitem">
-                      <div class="band-top">
-                        <span class="band-name">{band.name}</span>
-                        {band.badge && <span class={band.badge === 'Recomendable' ? 'badge-rec' : 'badge-must'}>{band.badge}</span>}
-                      </div>
-                      <span class={`band-genre ${tagClass}`}>{displayGenre}</span>
-                    </li>
-                  );
-                })}
-              </ul>
+    <!-- ══ HORARIOS VIEW ══ -->
+    <div id="view-horarios" class="view active">
+      {days.map((day, di) => {
+        const events = processedSchedule[day.id];
+        const minSMin = events.length > 0 ? Math.min(...events.map(e => e.sMin)) : 0;
+        const trimTop = Math.max(0, minSMin - 10);
+        const dayH = (TOTAL - trimTop) * PX;
+        const dayMarks = marks
+          .filter(m => m.top >= trimTop * PX)
+          .map(m => ({ ...m, top: m.top - trimTop * PX }));
+        return (
+          <section class={`day-section${di === 0 ? ' active' : ''}`} id={`sched-${day.id}`}>
+
+            <!-- Stage legend -->
+            <div class="tt-legend">
+              {(['main', 'ritual', 'chaos', 'desert'] as const).map(s => (
+                <span class="tt-legend-item">
+                  <span class="tt-legend-dot" style={`background:${stageColors[s]}`}></span>
+                  {s.toUpperCase()}
+                </span>
+              ))}
             </div>
-          ))}
-        </div>
-      </section>
-    ))}
-  </main>
 
-  <footer class="site-footer">
-    <div class="ornament">
-      <span class="ornament-line"></span>
-      <span class="ornament-diamond"></span>
-      <span>Resurrection Fest MMXXVI &nbsp;·&nbsp; Viveiro, Galicia</span>
-      <span class="ornament-diamond"></span>
-      <span class="ornament-line" style="background: linear-gradient(to right, transparent, var(--border)); transform: scaleX(-1);"></span>
+            <!-- Timeline -->
+            <div class="timetable-scroll">
+              <div class="timetable-inner" style={`height:${dayH}px`}>
+
+                <!-- Ruler -->
+                <div class="t-ruler" style={`height:${dayH}px`}>
+                  {dayMarks.map(m => (
+                    <span class={`t-mark ${m.hour ? 'hour' : 'half'}`} style={`top:${m.top}px`}>
+                      {m.label}
+                    </span>
+                  ))}
+                </div>
+
+                <!-- Events -->
+                <div class="t-events" style={`height:${dayH}px`}>
+                  {events.map(ev => {
+                    const top  = (ev.sMin - trimTop) * PX;
+                    const h    = Math.max(26, (ev.eMin - ev.sMin) * PX);
+                    const colW = 100 / ev.numCols;
+                    const left = ev.col * colW;
+                    const stageColor = stageColors[ev.stage];
+                    return (
+                      <div
+                        class="t-band"
+                        data-stage={ev.stage}
+                        style={`top:${top}px;height:${h}px;left:calc(${left}% + 3px);width:calc(${colW}% - 6px)`}
+                      >
+                        <div class="t-top-row">
+                          <span class="t-stage-pill" style={`color:${stageColor};background:${stageColor}28`}>
+                            {ev.stage.toUpperCase()}
+                          </span>
+                          {ev.badge && (
+                            <span class={`t-badge ${ev.badge === 'Recomendable' ? 'rec' : 'must'}`}>
+                              {ev.badge === 'Recomendable' ? 'Rec' : 'Must'}
+                            </span>
+                          )}
+                        </div>
+                        <div class="t-body">
+                          <span class="t-name">{ev.name}</span>
+                        </div>
+                        {h >= 38 && <span class="t-time">{ev.start}–{ev.end}</span>}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+          </section>
+        );
+      })}
     </div>
-  </footer>
 
-  <script>
-    const tabs = document.querySelectorAll('.tab-btn');
-    const sections = document.querySelectorAll('.day-section');
+    <footer class="footer">
+      Resurrection Fest MMXXVI &nbsp;·&nbsp; Viveiro, Galicia
+    </footer>
+  </div>
+</div>
 
-    tabs.forEach(tab => {
-      tab.addEventListener('click', () => {
-        const target = tab.dataset.target;
-
-        tabs.forEach(t => {
-          t.classList.remove('active');
-          t.setAttribute('aria-selected', 'false');
-        });
-        sections.forEach(s => s.classList.remove('active'));
-
-        tab.classList.add('active');
-        tab.setAttribute('aria-selected', 'true');
-        document.getElementById(`day-${target}`)?.classList.add('active');
-      });
+<script>
+  // View switching
+  const viewBtns = document.querySelectorAll<HTMLButtonElement>('.view-btn');
+  const views = document.querySelectorAll<HTMLElement>('.view');
+  viewBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const target = (btn as HTMLElement).dataset.view!;
+      viewBtns.forEach(b => b.classList.toggle('active', (b as HTMLElement).dataset.view === target));
+      views.forEach(v => v.classList.toggle('active', v.id === `view-${target}`));
     });
-  </script>
+  });
 
+  // Day tab switching
+  const tabs = document.querySelectorAll<HTMLButtonElement>('.tab-btn');
+  tabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+      const target = (tab as HTMLElement).dataset.target!;
+      tabs.forEach(t => { t.classList.remove('active'); t.setAttribute('aria-selected', 'false'); });
+      tab.classList.add('active'); tab.setAttribute('aria-selected', 'true');
+      document.querySelectorAll('#view-lineup .day-section').forEach(s => s.classList.remove('active'));
+      document.getElementById(`day-${target}`)?.classList.add('active');
+      document.querySelectorAll('#view-horarios .day-section').forEach(s => s.classList.remove('active'));
+      document.getElementById(`sched-${target}`)?.classList.add('active');
+    });
+  });
+</script>
 </body>
 </html>
