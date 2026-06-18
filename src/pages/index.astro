@@ -49,7 +49,7 @@ function processDay(daySched, badgeMap) {
     for (const band of bands) {
       const sMin = toMin(band.start);
       const eMin = toMin(band.end);
-      events.push({ name: band.name, stage, start: band.start, end: band.end, sMin, eMin, color: stageColors[stage], badge: badgeMap[band.name] || null, col: 0, numCols: 1 });
+      events.push({ name: band.name, stage, start: band.start, end: band.end, sMin, eMin, color: stageColors[stage], badge: badgeMap[band.name] || null, genre: genreMap[band.name] || null, col: 0, numCols: 1 });
     }
   }
   events.sort((a, b) => a.sMin - b.sMin || a.eMin - b.eMin);
@@ -95,7 +95,7 @@ const days = [
         { name: 'Sabaton', genre: 'Power Metal' },
         { name: 'A Day To Remember', genre: 'Post-Hardcore / Pop-Punk' },
         { name: 'Thrown', genre: 'Nu-Metalcore', badge: 'Imprescindible' },
-        { name: 'President', genre: 'Metal / Hardcore' },
+        { name: 'President', genre: 'Metalcore' },
         { name: 'Man With A Mission', genre: 'J-Rock / Alternative Rock' },
         { name: 'Annisokay', genre: 'Post-Hardcore / Alternative Metal', badge: 'Recomendable' },
       ]},
@@ -104,7 +104,7 @@ const days = [
         { name: 'Self Deception', genre: 'Modern Rock / Alternative Metal', badge: 'Recomendable' },
         { name: 'The Browning', genre: 'Electronicore / Deathcore', badge: 'Imprescindible' },
         { name: 'The Pretty Wild', genre: 'Hard Rock' },
-        { name: 'TSS', genre: 'Hardcore Punk', badge: 'Recomendable' },
+        { name: 'TSS', genre: 'Post-Hardcore', badge: 'Recomendable' },
         { name: 'Aneuma', genre: 'Melodic Death Metal' },
       ]},
       { id: 'chaos', label: 'CHAOS', bands: [
@@ -373,10 +373,12 @@ const schedule = {
 };
 
 const badgeMap: Record<string, string> = {};
+const genreMap: Record<string, string> = {};
 for (const day of days) {
   for (const stage of day.stages) {
     for (const band of stage.bands) {
       if (band.badge) badgeMap[band.name] = band.badge;
+      if (band.genre) genreMap[band.name] = band.genre.replace(' (Set Especial)', '').replace(' (Ganador concurso)', '');
     }
   }
 }
@@ -783,7 +785,7 @@ const processedSchedule = Object.fromEntries(
       cursor: default;
       display: flex;
       flex-direction: column;
-      justify-content: space-between;
+      gap: 3px;
       transition: filter .12s, z-index 0s, box-shadow .12s;
     }
     .t-band:hover { filter: brightness(.94); z-index: 20; box-shadow: var(--shadow); }
@@ -824,7 +826,6 @@ const processedSchedule = Object.fromEntries(
       align-items: center;
       min-height: 0;
       overflow: hidden;
-      padding: 4px 0;
     }
     .t-name {
       font-family: 'Oswald', sans-serif;
@@ -845,6 +846,22 @@ const processedSchedule = Object.fromEntries(
       color: var(--muted);
       white-space: nowrap;
       line-height: 1;
+    }
+    .t-genre-tag {
+      flex-shrink: 0;
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+      padding: 3px 8px;
+      border-radius: 4px;
+      border: 1px solid;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 100%;
+      line-height: 1.4;
     }
 
     /* ── Footer ──────────────────────── */
@@ -1008,6 +1025,9 @@ const processedSchedule = Object.fromEntries(
                             </span>
                           )}
                         </div>
+                        {h >= 55 && ev.genre && (
+                          <span class={`t-genre-tag ${getGenreTag(ev.genre)}`}>{ev.genre}</span>
+                        )}
                         <div class="t-body">
                           <span class="t-name">{ev.name}</span>
                         </div>
